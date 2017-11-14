@@ -33,5 +33,9 @@ const App = () => (
 export default App;
 ```
 
-## Roadmap
+## Build for production
+
+```sh
+NODE_ENV=production ./node_modules/.bin/babel ./src -d lib
+```
 

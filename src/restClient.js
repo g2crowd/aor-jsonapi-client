@@ -1,141 +1,172 @@
-/* eslint-disable */
 import {
-    GET_LIST,
-    GET_ONE,
-    GET_MANY,
-    GET_MANY_REFERENCE,
-    CREATE,
-    UPDATE,
-    DELETE,
+  GET_LIST,
+  GET_ONE,
+  GET_MANY,
+  GET_MANY_REFERENCE,
+  CREATE,
+  UPDATE,
+  DELETE,
+  CUSTOM
 } from './types';
 
-import {jsonApiHttpClient, queryParameters } from './fetch';
+import { jsonApiHttpClient } from './fetch';
+import qs from 'qs';
+
+function createIncludedMap({ json }) {
+  return (json.included || []).reduce((accumulator, value) => {
+    const { id, type, attributes } = value;
+    accumulator[type] = accumulator[type] || {};
+    accumulator[type][id] = Object.assign({ id, type }, attributes);
+    return accumulator;
+  }, {});
+}
+
+function denormalize({ id, type }, included) {
+  const attributes = (included[type] && included[type][id]) || {};
+  return Object.assign({ id, type }, attributes);
+}
+
+function denormalizeJsonApiData(node, included) {
+  const data = Object.assign({ id: node.id }, node.attributes, node.meta);
+  if (node.relationships) {
+    Object.keys(node.relationships).forEach(key => {
+      const relationship = node.relationships[key];
+      if (relationship.data) {
+        let denormalized;
+        if (Array.isArray(relationship.data)) {
+          denormalized = relationship.data.map(data => denormalize(data, included));
+        } else {
+          denormalized = denormalize(relationship.data, included)
+        }
+        Object.assign(data, { [key]: denormalized });
+      }
+    });
+  }
+  return data;
+}
 
 export default (apiUrl, httpClient = jsonApiHttpClient) => {
-    /**
-     * @param {String} type One of the constants appearing at the top if this file, e.g. 'UPDATE'
-     * @param {String} resource Name of the resource to fetch, e.g. 'posts'
-     * @param {Object} params The REST request params, depending on the type
-     * @returns {Object} { url, options } The HTTP request parameters
-     */
-    const convertRESTRequestToHTTP = (type, resource, params) => {
-        let url = '';
-        const options = {};
-        switch (type) {
-        case GET_MANY_REFERENCE:
-        case GET_LIST:
-            const { page, perPage } = params.pagination;
-            const { field, order } = params.sort;
-            const { name, value } = params.filter;
-            var query = {
-                'page[offset]': (page - 1) * perPage,
-                'page[limit]': perPage, 
-            };
-            Object.keys(params.filter).forEach(key =>{
-                var filterField = 'filter[' + key +']';
-                query[filterField] = params.filter[key];
-            })
-            if (type === 'GET_MANY_REFERENCE'){
-                const targetFilter = 'filter[' + params.target + ']';
-                query[targetFilter] = params.id;
-            }
-            if (order === 'ASC'){
-                query.sort = field;
-            }else{
-                query.sort = '-' + field;
-            }
-            url = `${apiUrl}/${resource}?${queryParameters(query)}`;
-            break;
-        case GET_ONE:
-            url = `${apiUrl}/${resource}/${params.id}`;
-            break;
-        case GET_MANY:
-            const query = {'filter[id]': params.ids.toString() };
-            url = `${apiUrl}/${resource}?${queryParameters(query)}`;
-            break;
-        case UPDATE:
-            url = `${apiUrl}/${resource}/${params.id}`;
-            options.method = 'PATCH';
-            var attrs = {};
-            Object.keys(params.data).forEach(key => attrs[key] = params.data[key]);
-            const updateParams = {data:{type: resource, id: params.id, attributes: attrs}};
-            options.body = JSON.stringify(updateParams);
-            break;
-        case CREATE:
-            url = `${apiUrl}/${resource}`;
-            options.method = 'POST';
-            const createParams = {data: {type: resource, attributes: params.data }};
-            options.body = JSON.stringify(createParams);
-            break;
-        case DELETE:
-            url = `${apiUrl}/${resource}/${params.id}`;
-            options.method = 'DELETE';
-            break;
-        default:
-            throw new Error(`Unsupported fetch action type ${type}`);
-        }
-        return { url, options };
+  /**
+   * @param {String} type One of the constants appearing at the top if this file, e.g. 'UPDATE'
+   * @param {String} resource Name of the resource to fetch, e.g. 'posts'
+   * @param {Object} params The REST request params, depending on the type
+   * @returns {Object} { url, options } The HTTP request parameters
+   */
+  const convertRESTRequestToHTTP = (type, resource, params) => {
+    const collectionParams = () => {
+      const { page, perPage } = params.pagination;
+      const { field, order } = params.sort;
+
+      return {
+        page: { number: page, size: perPage },
+        filter: params.filter,
+        sort: (order === 'ASC' ? field : `-${field}`)
+      };
     };
 
-    /**
-     * @param {Object} response HTTP response from fetch()
-     * @param {String} type One of the constants appearing at the top if this file, e.g. 'UPDATE'
-     * @param {String} resource Name of the resource to fetch, e.g. 'posts'
-     * @param {Object} params The REST request params, depending on the type
-     * @returns {Object} REST response
-     */
-    const convertHTTPResponseToREST = (response, type, resource, params) => {
-        const { headers, json } = response;
-        switch (type) {
-        case GET_MANY_REFERENCE:
-        case GET_LIST:
-            var jsonData = json.data.map(function (dic) {
-                var interDic = Object.assign({ id: dic.id }, dic.attributes, dic.meta);
-                if (dic.relationships){
-                    Object.keys(dic.relationships).forEach(function(key){
-                        var keyString = key + '_id';
-                        if (dic.relationships[key].data){
-                            //if relationships have a data field --> assume id in data field
-                            interDic[keyString] = dic.relationships[key].data.id;
-                        }else if (dic.relationships[key].links){
-                            //if relationships have a link field
-                            var link = dic.relationships[key].links['self'];
-                            httpClient(link).then(function (response) {
-                                interDic[key] = {'data': response.json.data, 'count': response.json.data.length};
-                                interDic['count'] = response.json.data.length;
-                            });
-                        }
-                    })
-                }
-                return interDic;
-            });
-            return { data: jsonData, total: json.meta['record-count'] };
-        case GET_MANY:
-                jsonData = json.data.map(function(obj){
-                    return Object.assign({id: obj.id}, obj.attributes);
-                })
-                return {data: jsonData}
-        case UPDATE:
-        case CREATE:
-        case GET_ONE:
-            return { data: Object.assign({id: json.data.id}, json.data.attributes) };
-        case DELETE:
-            return {data: json}
-        default:
-            return {data:json.data};
-        }
+    const collectionUrl = (query) => (
+      `${apiUrl}/${resource}?${qs.stringify(query, { indices: false, arrayFormat: 'brackets' })}`
+    );
+
+    const getList = () => ({ url: collectionUrl(collectionParams())});
+
+    const getManyReference = () => {
+      const query = collectionParams();
+      query.filter[params.target] = params.id;
+      return { url: collectionUrl(query) };
     };
 
-    /**
-     * @param {string} type Request type, e.g GET_LIST
-     * @param {string} resource Resource name, e.g. "posts"
-     * @param {Object} payload Request parameters. Depends on the request type
-     * @returns {Promise} the Promise for a REST response
-     */
-    return (type, resource, params) => {
-        const { url, options } = convertRESTRequestToHTTP(type, resource, params);
-        return httpClient(url, options)
-            .then(response => convertHTTPResponseToREST(response, type, resource, params));
+    const getMany = () => ({ url: collectionUrl({ filter: { id: params.ids } })});
+    const getOne = () => ({ url: `${apiUrl}/${resource}/${params.id}`});
+
+    const create = () => (
+      {
+        url: `${apiUrl}/${resource}`,
+        options: {
+          method: 'POST', body: JSON.stringify({ data: { type: resource, attributes: params.data } })
+        }
+      }
+    );
+
+    const update = () => (
+      {
+        url: `${apiUrl}/${resource}/${params.id}`,
+        options: {
+          method: 'PATCH', body: JSON.stringify({ data: { type: resource, id: params.id, attributes: params.data } })
+        }
+      }
+    );
+
+    const destroy = () => ({ url: `${apiUrl}/${resource}/${params.id}`, options: { method: 'DELETE' } });
+
+    const custom = () => {
+      const { action, method, data } = params;
+
+      return {
+        url: `${apiUrl}/${resource}/${action}`, options: { method, body: JSON.stringify({ data }) }
+      };
     };
+
+    const converters = {
+      [GET_MANY_REFERENCE]: getManyReference,
+      [GET_LIST]: getList,
+      [GET_MANY]: getMany,
+      [GET_ONE]: getOne,
+      [CREATE]: create,
+      [UPDATE]: update,
+      [DELETE]: destroy,
+      [CUSTOM]: custom,
+      fallback: () => { throw new Error(`Unsupported fetch action type ${type}`); }
+    };
+
+    const { url, options = {} } = (converters[type] || converters.fallback)();
+    return { url, options };
+  };
+
+  /**
+   * @param {Object} response HTTP response from fetch()
+   * @param {String} type One of the constants appearing at the top if this file, e.g. 'UPDATE'
+   * @returns {Object} REST response
+   */
+  const convertHTTPResponseToREST = (response, type) => {
+    const denormalize = ({ json }) => {
+      const included = createIncludedMap(response);
+
+      if (Array.isArray(json.data)) {
+        return { data: json.data.map(node => denormalizeJsonApiData(node, included)) };
+      } else {
+        return { data: denormalizeJsonApiData(json.data, included) };
+      }
+    };
+
+    const paginated = resp => Object.assign(denormalize(resp), { total: resp.json.meta['record_count'] });
+
+    const converters = {
+      [GET_MANY_REFERENCE]: paginated,
+      [GET_LIST]: paginated,
+      [GET_MANY]: denormalize,
+      [GET_ONE]: denormalize,
+      [CREATE]: denormalize,
+      [UPDATE]: denormalize,
+      [DELETE]: denormalize,
+      [CUSTOM]: denormalize,
+      fallback: ({ json }) => ({ data: json.data })
+    };
+
+    const result = (converters[type] || converters.fallback)(response);
+    return Object.assign(result, response.json.meta && { meta: response.json.meta });
+  };
+
+  /**
+   * @param {string} type Request type, e.g GET_LIST
+   * @param {string} resource Resource name, e.g. "posts"
+   * @param {Object} payload Request parameters. Depends on the request type
+   * @returns {Promise} the Promise for a REST response
+   */
+  return (type, resource, params) => {
+    const { url, options } = convertRESTRequestToHTTP(type, resource, params);
+    return httpClient(url, options)
+      .then(response => convertHTTPResponseToREST(response, type));
+  };
 };
 
