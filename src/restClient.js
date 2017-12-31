@@ -14,16 +14,16 @@ import qs from 'qs';
 
 function createIncludedMap({ json }) {
   return (json.included || []).reduce((accumulator, value) => {
-    const { id, type, attributes } = value;
+    const { id, type } = value;
     accumulator[type] = accumulator[type] || {};
-    accumulator[type][id] = Object.assign({ id, type }, attributes);
+    accumulator[type][id] = value;
     return accumulator;
   }, {});
 }
 
 function denormalize({ id, type }, included) {
-  const attributes = (included[type] && included[type][id]) || {};
-  return Object.assign({ id, type }, attributes);
+  const node = (included[type] && included[type][id]) || {};
+  return denormalizeJsonApiData(node, included);
 }
 
 function denormalizeJsonApiData(node, included) {
