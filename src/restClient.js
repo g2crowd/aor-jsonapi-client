@@ -27,6 +27,7 @@ function denormalize({ id, type }, included) {
 }
 
 function denormalizeJsonApiData(node, included) {
+  if (!node) { return {} }
   const data = Object.assign({ id: node.id }, node.attributes, node.meta);
   if (node.relationships) {
     Object.keys(node.relationships).forEach(key => {
