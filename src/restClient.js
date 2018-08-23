@@ -57,12 +57,19 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
     const collectionParams = () => {
       const { page, perPage } = params.pagination;
       const { field, order } = params.sort;
+      const { _include, ...rest } = params.filter;
 
-      return {
+      const result = {
         page: { number: page, size: perPage },
-        filter: params.filter,
+        filter: { ...rest },
         sort: (order === 'ASC' ? field : `-${field}`)
       };
+
+      if (_include) {
+        result.include = _include;
+      }
+
+      return result;
     };
 
     const collectionUrl = (query) => (
