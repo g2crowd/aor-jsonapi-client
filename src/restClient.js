@@ -54,7 +54,7 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
    * @returns {Object} { url, options } The HTTP request parameters
    */
   const convertRESTRequestToHTTP = (type, resource, params) => {
-    const { _include: include, ...filter } = params.filter;
+    const { _include: include, ...filter } = params.filter || {};
 
     const collectionParams = () => {
       const { page, perPage } = params.pagination;
