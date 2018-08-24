@@ -54,22 +54,18 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
    * @returns {Object} { url, options } The HTTP request parameters
    */
   const convertRESTRequestToHTTP = (type, resource, params) => {
+    const { _include: include, ...filter } = params.filter;
+
     const collectionParams = () => {
       const { page, perPage } = params.pagination;
       const { field, order } = params.sort;
-      const { _include, ...rest } = params.filter;
 
-      const result = {
+      return {
+        include,
+        filter,
         page: { number: page, size: perPage },
-        filter: { ...rest },
         sort: (order === 'ASC' ? field : `-${field}`)
       };
-
-      if (_include) {
-        result.include = _include;
-      }
-
-      return result;
     };
 
     const collectionUrl = (query) => (
