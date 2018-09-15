@@ -57,7 +57,10 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
     const { _include: include, ...filter } = params.filter || {};
 
     const collectionParams = () => {
-      let result = {};
+      let result = {
+        include,
+        filter
+      };
 
       if (params.pagination) {
         result.page = { number: params.pagination.page, size: params.pagination.perPage };
@@ -67,9 +70,6 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
         let { field, order } = params.sort || [];
         result.sort = (order === 'ASC' ? field : `-${field}`)
       }
-
-      if (include) { result.include = include; }
-      if (filter) { result.filter = filter; }
 
       return result;
     };
