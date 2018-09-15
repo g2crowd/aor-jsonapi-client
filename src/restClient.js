@@ -57,15 +57,21 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
     const { _include: include, ...filter } = params.filter || {};
 
     const collectionParams = () => {
-      const { page, perPage } = params.pagination;
-      const { field, order } = params.sort;
+      let result = {};
 
-      return {
-        include,
-        filter,
-        page: { number: page, size: perPage },
-        sort: (order === 'ASC' ? field : `-${field}`)
-      };
+      if (params.pagination) {
+        result.page = { number: params.pagination.page, size: params.pagination.perPage };
+      }
+
+      if (params.sort) {
+        let { field, order } = params.sort || [];
+        result.sort = (order === 'ASC' ? field : `-${field}`)
+      }
+
+      if (include) { result.include = include; }
+      if (filter) { result.filter = filter; }
+
+      return result;
     };
 
     const collectionUrl = (query) => (
