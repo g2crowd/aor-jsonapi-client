@@ -110,10 +110,11 @@ export default (apiUrl, httpClient = jsonApiHttpClient) => {
     const destroy = () => ({ url: `${apiUrl}/${resource}/${params.id}`, options: { method: 'DELETE' } });
 
     const custom = () => {
-      const { action, method, data } = params;
+      const { action, method, data, id, member } = params;
 
+      const path = member ? `${apiUrl}/${resource}/${id}/${action}` : `${apiUrl}/${resource}/${action}`;
       return {
-        url: `${apiUrl}/${resource}/${action}`, options: { method, body: JSON.stringify({ data }) }
+        url: path, options: { method, body: JSON.stringify({ data }) }
       };
     };
 
